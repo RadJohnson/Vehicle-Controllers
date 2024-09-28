@@ -6,15 +6,14 @@ public class VehicleController : MonoBehaviour
 {
     [SerializeField] private Rigidbody rb;
 
-
     [Serializable]
     struct Suspension
     {
         [Header("Suspension")]
-        [SerializeField] internal Transform suspensionTransforms;
-        internal float suspensionLength;//NEEDS TO BE AN ARRAY SO THAT IT IS UNIQUE TO EACH WHEEL
-        internal float suspensionLengthOld;//NEEDS TO BE AN ARRAY SO THAT IT IS UNIQUE TO EACH WHEEL
-        [SerializeField] internal float suspensionTravelf;// Rectify this stuff to make it easier to set susspension length
+        [SerializeField] internal Transform suspensionTransform;
+        internal float suspensionLength;
+        internal float suspensionLengthOld;
+        [SerializeField] internal float suspensionTravel;
         [SerializeField] internal float restLength;
         [SerializeField] internal float stiffness;
         [SerializeField] internal float dampingStiffness;
@@ -23,17 +22,21 @@ public class VehicleController : MonoBehaviour
         [SerializeField] bool Steering;
         [SerializeField] bool drive;
 
-        //private float dampingForce;
-        //private float suspensionForce;
+        //[Header("Wheel")]
+        //[SerializeField] private float wheelRadius;
+        //[SerializeField] private GameObject wheel;
+        //[SerializeField] private float frictionCoefficient;
+    }
+    [SerializeField] Suspension[] suspensions;
+
+    [Serializable]
+    struct Wheel
+    {
         [Header("Wheel")]
         [SerializeField] private float wheelRadius;
         [SerializeField] private GameObject wheel;
         [SerializeField] private float frictionCoefficient;
     }
-    [SerializeField] Suspension[] suspensions;
-
-
-
 
     [Header("Suspension")]
     [SerializeField] private float[] suspensionLength;//NEEDS TO BE AN ARRAY SO THAT IT IS UNIQUE TO EACH WHEEL
@@ -64,8 +67,11 @@ public class VehicleController : MonoBehaviour
     //[SerializeField] private LayerMask floor;
 
     [SerializeField] private float frictionCoefficient;
-    //[SerializeField] private float rollingCoefficeint;
 
+    public float staticFrictionCoefficient = 0.4f;
+    public float kineticFrictionCoefficient = 0.3f;
+
+    //[SerializeField] private float rollingCoefficeint;
 
     [SerializeField, Range(0, 60)] private float maximumSteeringAngle;
     private float steerAngle;
@@ -82,7 +88,6 @@ public class VehicleController : MonoBehaviour
 
     [SerializeField, Range(0.05f, 1)] private float vehicleDragCoeficient;
 
-
     [SerializeField] float engineForce;
 
     [SerializeField] float dragConstant = 0f;
@@ -90,7 +95,7 @@ public class VehicleController : MonoBehaviour
     [SerializeField] float sDragConstant = 0f;
     float rho = 1.29f;
 
-    [SerializeField] AnimationCurve frictionCurve;
+    //[SerializeField] AnimationCurve frictionCurve;
     private float engineForceMultiplier;
 
     private void Awake()
@@ -129,7 +134,6 @@ public class VehicleController : MonoBehaviour
         }
     }
 
-
     /// <summary>
     /// Calcualtes Hookes Law
     /// </summary>
@@ -167,18 +171,18 @@ public class VehicleController : MonoBehaviour
         return F;
     }
 
-    ///// <summary>
-    ///// Calcualtes Force of Friction
-    ///// </summary>
-    ///// <param name="µ">is the Friction Coefficient(ammount of interaction between surfaces)</param>
-    ///// <param name="N">is the Normal Force(applied perpendicular to the surface contact)</param>
-    ///// <returns></returns>
-    //float Friction(float µ, float N, float angle)
-    //{
-    //    N = N * MathF.Cos(angle);
-    //    float F = -µ * N;
-    //    return F;
-    //}
+    /// <summary>
+    /// Calcualtes Force of Friction
+    /// </summary>
+    /// <param name="µ">is the Friction Coefficient(ammount of interaction between surfaces)</param>
+    /// <param name="N">is the Normal Force(applied perpendicular to the surface contact)</param>
+    /// <returns></returns>
+    float Friction(float µ, float N, float angle)
+    {
+        N = N * MathF.Cos(angle);
+        float F = -µ * N;
+        return F;
+    }
 
 
     /// <summary>
@@ -248,17 +252,6 @@ public class VehicleController : MonoBehaviour
 
     //F(rr) = - C(rr) * v  where C(rr) is a constant and v is the velocity vector.
 
-    float RollingResistanceGreg(float rollingResistanceConstant, float velocityZ)
-    {
-        // Calculate the rolling resistance force
-        float rollingResistanceForce = -rollingResistanceConstant * velocityZ;
-
-        // Apply damping to slow down the car over time
-        float dampingFactor = 0.5f; // Experiment with the value to adjust the damping effect
-        rollingResistanceForce += dampingFactor * velocityZ;
-
-        return rollingResistanceForce;
-    }
 
     float RollingResistanceConstantResistance(float N, float μ)
     {
@@ -332,12 +325,25 @@ public class VehicleController : MonoBehaviour
     float idleRPM, maxRPM, RPM;
 
 
-
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="M"></param>
+    /// <param name="g"></param>
+    /// <returns></returns>
     float NormalForce(float M, float g)
     {
         float F = M * g;
         return F;
     }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="M"></param>
+    /// <param name="g"></param>
+    /// <param name="X"></param>
+    /// <returns></returns>
     float NormalForce(float M, float g, float X)
     {
         float F = M * g * Mathf.Cos(X);
@@ -353,21 +359,22 @@ public class VehicleController : MonoBehaviour
             if (Physics.Raycast(suspensionTransforms[i].position, -transform.up, out RaycastHit intersectPoint, suspensionMaxLength + wheelRadius/*, floor*/))//This may need to change
             {
                 ///Suspension
-
                 suspensionLengthOld[i] = suspensionLength[i];
-
+                
                 suspensionLength[i] = intersectPoint.distance - wheelRadius;
-
+                
                 suspensionLength[i] = Mathf.Clamp(suspensionLength[i], suspensionMinLength, suspensionMaxLength);
-
+                
                 suspensionLength[i] = suspensionLength[i];
-
+                
                 dampingForce = dampingStiffness * Acceleration(suspensionLengthOld[i], suspensionLength[i], Time.fixedDeltaTime);
-
+                
                 suspensionForce = HookesLaw(stiffness, restLength - suspensionLength[i]) + dampingForce;
-
+                
                 if (!spiderCar)//this amkes the car more stable when turned on (could consider making it switch on and off based off of some condition)
                     suspensionForce = Mathf.Max(0.0f, suspensionForce);//Mathf.Clamp(suspensionForce, 0, Mathf.Infinity);
+                
+
                 // this line above is needed so that the car doesnt stick to cielings or walls
 
                 //This bit needs to hold the objects that are on the suspension points to be fully robust and handle more than one object without issue
@@ -380,68 +387,51 @@ public class VehicleController : MonoBehaviour
                 //objectOnSusspensionLastPos = intersectPoint.collider.gameObject.transform.position;
 
 
+                //Vector3 forceDirection = Vector3.Cross(intersectPoint.normal, Vector3.Cross(intersectPoint.normal, Vector3.down)).normalized;
+                //Vector3 force = forceDirection * forceMagnitude;
+
+
+
+                float angle = Mathf.Acos(Vector3.Dot(intersectPoint.normal.normalized, Vector3.up)) * Mathf.Rad2Deg;
+
+                // Adjusting the angle for slopes facing downwards
+                //if (angle > 90)
+                //{
+                //    angle = 180 - angle;
+                //}
+
+                Debug.Log("Surface angle: " + angle + " degrees");
+                Debug.Log(
+                NormalForce(rb.mass / 4, Physics.gravity.magnitude, angle)
+                    );
+                //lateralForce = Friction(frictionCoefficient, NormalForce(rb.mass/4,Physics.gravity.magnitude,angle));
+
+                //^^^ nearly works
+
                 ///LateralForce
 
                 //lateralForce = LateralFriction(suspensionTransforms[i], frictionCoefficient);
 
                 Vector3 tireWorldVel = rb.GetPointVelocity(suspensionTransforms[i].position);
                 Vector3 tireLocalVel = suspensionTransforms[i].InverseTransformDirection(tireWorldVel);
-                lateralForce = -Friction(frictionCoefficient, tireLocalVel.x);
-                //lateralForce = Friction(frictionCoefficient, NormalForce(rb.mass, Physics.gravity.y, Vector3.Angle(intersectPoint.normal, Vector3.up))*tireLocalVel.x);
 
-                //Debug.Log(NormalForce(rb.mass, Physics.gravity.y, Vector3.Angle(intersectPoint.normal, Vector3.up)));
-                //Debug.Log(Vector3.Angle(intersectPoint.normal, Vector3.up));
-                //Debug.Log($"tireWorldVel {tireWorldVel} tireLocalVel {tireLocalVel}");
-                //lateralForce = Acceleration(lateralForce,rb.mass);
+                lateralForce = -Friction(frictionCoefficient, tireLocalVel.x);
+
 
                 ///RollingFriction
 
-                //driveForce = (engineForce * engineForceMultiplier)/4 + Friction(rollingResistanceConstant, tireLocalVel.z);
-
-                //float rollingFrictionForce = Friction(rollingCoefficeint, tireLocalVel.z);
-
-                //float rollingFriction = RollingFriction(rollingCoefficeint, rb.mass, wheelRadius);
-
-                //Debug.Log(rollingFriction);
-                //float maxDriveForce = 100.0f;
-
-                //Debug.Log($"EngineForceMultiplier {engineForceMultiplier}");
-
-                //Debug.Log($"EngineForce {engineForce}");
-                //float dampingFactorDrive = 0.2f; // Experiment with the value to adjust the damping effect
-
-
-
-
                 driveForce = /*Friction(frictionCoefficient, tireLocalVel.z) */+Traction(engineForceMultiplier, engineForce);
-                //Debug.Log($"Drive force traction {driveForce}");
-
-                //driveForce += Drag(dragConstant, tireLocalVel.z) + RollingResistance(rollingResistanceConstant, tireLocalVel.z); //make drag apply on rigidbody rahter than the wheels
-
-                //Debug.Log($"Drive force after drag {driveForce} Drag{Drag(dragConstant, tireLocalVel.z)} roll res {RollingResistance(rollingResistanceConstant, tireLocalVel.z)}");
-
-                //driveForce = Acceleration(driveForce,rb.mass);
-
-                //driveForce = Mathf.Clamp(driveForce,-20,450);
-                //driveForce -= dampingFactorDrive * rb.velocity.z;
-
-                //driveForce = Mathf.Clamp(driveForce, -maxDriveForce, maxDriveForce);
 
                 // Convert the final force to world space
 
+
+                //finalForceWorld = suspensionTransforms[i].TransformDirection(new Vector3(lateralForce, suspensionForce, driveForce));
                 finalForceWorld = suspensionTransforms[i].TransformDirection(new Vector3(lateralForce, suspensionForce, driveForce));
 
-                //Debug.Log(Drag(dragConstant, tireLocalVel.z) + RollingResistance(rollingResistanceConstant, tireLocalVel.z));
-
                 var s = transform.TransformDirection(new Vector3(Drag(sDragConstant, rb.velocity.x), 0, Drag(dragConstant, rb.velocity.z) + RollingResistance(rollingResistanceConstant, tireLocalVel.z)));
-                //var s = transform.TransformDirection(new Vector3(Drag(sDragConstant, rb.velocity.x), 0, Drag(dragConstant, transform.InverseTransformDirection(rb.velocity).z) + RollingResistance(rollingResistanceConstant, transform.InverseTransformDirection(rb.velocity).z)));
-
-                //rb.AddForceAtPosition(s, transform.position);//drag forces
-
 
                 // Apply the force at the suspension position
-                rb.AddForceAtPosition(finalForceWorld + s, suspensionTransforms[i].position /*+ (-transform.up * (suspensionLength[i] + wheelRadius / 2f))*/);
-                //rb.AddRelativeForce(0, 0, driveForce, ForceMode.Force);
+                rb.AddForceAtPosition(finalForceWorld + s, suspensionTransforms[i].position);
             }
             else
             {
@@ -453,47 +443,49 @@ public class VehicleController : MonoBehaviour
             }
 
 
-            if (Input.GetKey(KeyCode.W))
-            {
-                engineForceMultiplier++;
-                //rb.AddForce(transform.forward, ForceMode.Acceleration);
-            }
-            else if (Input.GetKey(KeyCode.S))
-            {
-                engineForceMultiplier--;
-                //rb.AddForce(-transform.forward, ForceMode.Acceleration);
-            }
-            else
-            {
-                RecenterThrottle();
-            }
-            engineForceMultiplier = Mathf.Clamp(engineForceMultiplier, -1.5f, 1.5f);
-
-            ///Steering
-            if (Input.GetKey(KeyCode.A))
-            {
-                steerAngle -= steerForce;
-            }
-            else if (Input.GetKey(KeyCode.D))
-            {
-                steerAngle += steerForce;
-            }
-            else
-            {
-                RecenterSteering();
-            }
-
-            steerAngle = Mathf.Clamp(steerAngle, -maximumSteeringAngle, maximumSteeringAngle);
-            suspensionTransforms[0].localEulerAngles = new Vector3(suspensionTransforms[0].gameObject.transform.localEulerAngles.x, steerAngle, suspensionTransforms[0].gameObject.transform.localEulerAngles.z);
-            suspensionTransforms[1].localEulerAngles = new Vector3(suspensionTransforms[0].gameObject.transform.localEulerAngles.x, steerAngle, suspensionTransforms[0].gameObject.transform.localEulerAngles.z);
         }
+        if (Input.GetKey(KeyCode.W))
+        {
+            engineForceMultiplier++;
+            //rb.AddForce(transform.forward, ForceMode.Acceleration);
+        }
+        else if (Input.GetKey(KeyCode.S))
+        {
+            engineForceMultiplier--;
+            //rb.AddForce(-transform.forward, ForceMode.Acceleration);
+        }
+        else
+        {
+            RecenterThrottle();
+        }
+        engineForceMultiplier = Mathf.Clamp(engineForceMultiplier, -1.5f, 1.5f);
+
+        ///Steering
+        if (Input.GetKey(KeyCode.A))
+        {
+            steerAngle -= steerForce;
+        }
+        else if (Input.GetKey(KeyCode.D))
+        {
+            steerAngle += steerForce;
+        }
+        else
+        {
+            RecenterSteering();
+        }
+
+        steerAngle = Mathf.Clamp(steerAngle, -maximumSteeringAngle, maximumSteeringAngle);
+        suspensionTransforms[0].localEulerAngles = new Vector3(suspensionTransforms[0].gameObject.transform.localEulerAngles.x, steerAngle, suspensionTransforms[0].gameObject.transform.localEulerAngles.z);
+        suspensionTransforms[1].localEulerAngles = new Vector3(suspensionTransforms[0].gameObject.transform.localEulerAngles.x, steerAngle, suspensionTransforms[0].gameObject.transform.localEulerAngles.z);
     }
+
     void RecenterSteering()
     {
         if (steerAngle > 0.05f || steerAngle < -0.05f)
             steerAngle = Mathf.Lerp(steerAngle, 0, Time.deltaTime);
         else steerAngle = 0;
     }
+
     void RecenterThrottle()
     {
         if (engineForceMultiplier > 0.05f || engineForceMultiplier < -0.05f)
@@ -504,16 +496,6 @@ public class VehicleController : MonoBehaviour
 
     private void Update()
     {
-        //float frontalArea = 0;
-
-        //if (TryGetComponent(out Collider col))
-        //{
-        //    Bounds bounds = col.bounds;
-        //    frontalArea = bounds.size.x * bounds.size.z;
-        //}
-
-        //dragConstant = AirResistance(vehicleDragCoeficient, frontalArea, rho);
-        //rollingResistanceConstant = dragConstant * 30;
 
         for (int i = 0; i < suspensionTransforms.Length; i++)
         {
@@ -526,8 +508,8 @@ public class VehicleController : MonoBehaviour
 
 
 
-
-    private float CalculateSuspension(RaycastHit ray, ref Suspension suspension)
+    //READY TO BE USED WHEN EVERYTHIGN IS WORKING
+    private float CalculateSuspensionForce(RaycastHit ray, ref Suspension suspension)
     {
         ///Suspension
         float suspensionForce, dampingForce;
@@ -539,15 +521,11 @@ public class VehicleController : MonoBehaviour
 
         dampingForce = suspension.dampingStiffness * Acceleration(suspension.suspensionLengthOld, suspension.suspensionLength, Time.fixedDeltaTime);
 
-
         suspensionForce = HookesLaw(suspension.stiffness, suspension.restLength - suspension.suspensionLength) + dampingForce;
 
-        if (!spiderCar)//this amkes the car more stable when turned on (could consider making it switch on and off based off of some condition)
+        if (!spiderCar)//this makes the car more stable when turned on (could consider making it switch on and off based off of some condition)
             suspensionForce = Mathf.Clamp(suspensionForce, 0, Mathf.Infinity);
         // this line above is needed so that the car doesnt stick to cielings or walls
-
-
-
 
         //This bit needs to hold the objects that are on the suspension points to be fully robust and handle more than one object without issue
         GameObject objectOnSusspension = ray.collider.gameObject;
@@ -557,8 +535,6 @@ public class VehicleController : MonoBehaviour
                 (suspension.dampingStiffness * Acceleration(objectOnSusspensionLastPos.y, objectOnSusspension.transform.position.y, Time.fixedDeltaTime)), 0), ray.point);
         }
         objectOnSusspensionLastPos = ray.collider.gameObject.transform.position;
-
-
 
         return suspensionForce;
     }
@@ -613,11 +589,9 @@ public class VehicleController : MonoBehaviour
 
         suspensionTravel = 0.2f;
         restLength = 0.5f;
-        //stiffness = 2000f;
-        //dampingStiffness = 250f;
 
-        stiffness = 1700f;
-        dampingStiffness = 900f;
+        stiffness = 2000f;
+        dampingStiffness = 250f;
 
         wheelRadius = 0.43f;
 
@@ -627,11 +601,9 @@ public class VehicleController : MonoBehaviour
 
         steerForce = 0.5f;
 
-
         vehicleDragCoeficient = 0.534f;
         engineForce = 100;
 
         spiderCar = false;
-
     }
 }
